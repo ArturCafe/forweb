@@ -37,7 +37,7 @@ export default function Layout({ children }) {
             <strong>
               <i>Art</i>Jurnal
             </strong>
-            <span>Regiunea Purcari</span>
+            <span>Regiunea Start</span>
           </Link>
           <div className="social">
             {/* Авторизационный блок стал чище */}

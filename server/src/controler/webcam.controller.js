@@ -3,11 +3,34 @@ import Veb from "../model/veb.js"; // Importă schema Mongoose pentru Postări
 
 export const getVeb = async (req, res) => {
   try {
-    const posts = await Veb.find().sort({ createdAt: -1 }).limit(45);
+    // Preluăm parametrii din query URL (ex: /api/posts?page=2&limit=6)
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 6;
 
+    // Calculăm indexul de unde începem extragerea
+    const startIndex = (page - 1) * limit;
+
+    // Numărăm totalul de documente din bază pentru a ști câte pagini vor fi în total
+    const totalPosts = await Veb.countDocuments();
+    const totalPages = Math.ceil(totalPosts / limit) || 1;
+
+    // Extragem doar postările destinate paginii curente
+    const posts = await Veb.find()
+      .sort({ processedAt: -1 }) // Cele mai recente primele
+      .skip(startIndex)
+      .limit(limit);
+
+    // Returnăm structura completă pe care o va citi Frontend-ul
     return res.status(200).json({
       status: "ok",
-      posts,
+      posts: posts,
+      pagination: {
+        currentPage: page,
+        totalPages: totalPages,
+        hasNextPage: page < totalPages,
+        hasPrevPage: page > 1,
+        totalPosts: totalPosts,
+      },
     });
   } catch (error) {
     console.error("Eroare în controller-ul getPosts:", error);
@@ -17,6 +40,7 @@ export const getVeb = async (req, res) => {
     });
   }
 };
+
 export const getFolders = async (req, res) => {
   try {
     const folders = await Folder.find().sort({ processedAt: -1 }).limit(15);

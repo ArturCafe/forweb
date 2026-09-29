@@ -1,80 +1,49 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-
-import { posts as localPosts } from "../data/content";
+import Pagination from "../components/Pagination";
 import postsService from "../services/post/post.service";
 
 export default function Blog() {
-  const [serverPosts, setServerPosts] = useState(null);
-  const [pagination, setPagination] = useState(1);
+  const [posts, setPosts] = useState([]);
+  const [pagination, setPagination] = useState({
+    currentPage: 1,
+    totalPages: 1,
+  });
   const [currentPage, setCurrentPage] = useState(1);
   const [loading, setLoading] = useState(false);
 
+  const postsPerPage = 6;
+
+  // 1. РЕАКТИВНЫЕ ПОДПИСКИ (Слушаем глобальное состояние)
   useEffect(() => {
-    const subscription = postsService.posts$.subscribe((posts) => {
-      setServerPosts(posts);
-    });
+    const subPosts = postsService.posts$.subscribe(setPosts);
+    const subPag = postsService.pagination$.subscribe(setPagination);
+    const subLoad = postsService.loading$.subscribe(setLoading);
 
     return () => {
-      subscription.unsubscribe();
+      subPosts.unsubscribe();
+      subPag.unsubscribe();
+      subLoad.unsubscribe();
     };
   }, []);
 
+  // 2. ДЕЙСТВИЕ: Запрашиваем данные у сервиса при смене страницы
   useEffect(() => {
-    setLoading(true);
-
-    postsService
-      .getPosts({
-        page: currentPage,
-        limit: 5,
-      })
-      .subscribe({
-        next: (data) => {
-          console.log("Posts primite:", data);
-
-          /*
-          Presupunem că backend-ul returnează:
-
-          {
-            posts: [...],
-            pagination: {
-              currentPage,
-              totalPages,
-              hasNextPage,
-              hasPrevPage
-            }
-          }
-        */
-
-          setPagination(/*data.*/ pagination);
-          setLoading(false);
-        },
-
-        error: (error) => {
-          console.log("Server picat, se vor folosi datele locale", error);
-
-          setServerPosts(null);
-          setPagination(null);
-          setLoading(false);
-        },
-      });
+    // Нам не нужно обрабатывать .subscribe(next, error) прямо здесь!
+    // Сервер ответит, сработает .tap() внутри сервиса, и наши подписки выше сами изменят стейт.
+    const sub = postsService
+      .getPosts({ page: currentPage, limit: postsPerPage })
+      .subscribe();
+    return () => sub.unsubscribe();
   }, [currentPage]);
 
-  const handleNextPage = () => {
-    if (pagination?.hasNextPage) {
-      setCurrentPage((prev) => prev + 1);
+  // 3. СМУТ-СКРОЛЛ
+  useEffect(() => {
+    if (!loading) {
+      window.scrollTo({ top: 0, behavior: "smooth" });
     }
-  };
-
-  const handlePrevPage = () => {
-    if (pagination?.hasPrevPage) {
-      setCurrentPage((prev) => prev - 1);
-    }
-  };
-
-  const postsToShow =
-    serverPosts && serverPosts.length > 0 ? serverPosts : localPosts;
+  }, [loading]);
 
   return (
     <>
@@ -87,83 +56,57 @@ export default function Blog() {
 
       <section aria-label="Blog">
         <div className="container">
-          {loading && <p>Se încarcă...</p>}
-
+          {loading && <p style={{ textAlign: "center" }}>Se încarcă...</p>}
           <div className="blog-grid">
-            {postsToShow.map(
-              ({
-                _id,
-                processedAt,
-                originalName,
-                sourceFolder,
-                currentPath,
-              }) => (
-                <article className="post-card" key={_id || originalName}>
-                  <Link
-                    to={`/blog/${_id || ""}`}
-                    tabIndex="-1"
-                    aria-hidden="true"
-                  >
-                    <img
-                      src={`http://localhost:5000/videos/${currentPath}`}
-                      alt={originalName || ""}
-                      loading="lazy"
-                    />
+            {posts.map(({ _id, processedAt, originalName, currentPath }) => (
+              <article className="post-card" key={_id}>
+                <Link to={`/blog/${_id}`} tabIndex="-1" aria-hidden="true">
+                  <img
+                    src={`http://localhost:5000/videos/${currentPath}`}
+                    alt={originalName}
+                    loading="lazy"
+                  />
+                </Link>
+                <div className="post-content">
+                  <time dateTime={processedAt}>
+                    <h3>creat</h3>
+                    {processedAt}
+                  </time>
+                  <h3>
+                    <Link to={`/blog/${_id}`}>{originalName}</Link>
+                  </h3>
+                  <Link className="text-link" to={`/blog/${_id}`}>
+                    Read more
                   </Link>
-
-                  <div className="post-content">
-                    <time dateTime={processedAt || ""}>
-                      <h3>creat</h3>
-                      {processedAt || ""}
-                    </time>
-
-                    <h3>
-                      <Link to={`/blog/${_id || ""}`}>{originalName}</Link>
-                    </h3>
-
-                    <Link className="text-link" to={`/blog/${_id || ""}`}>
-                      Read more{" "}
-                      <span className="sr-only">about {originalName}</span>
-                    </Link>
-                  </div>
-                </article>
-              ),
-            )}
+                </div>
+              </article>
+            ))}
           </div>
-
-          {pagination && (
+          {pagination.totalPages > 1 && (
             <div
-              className="pagination-controls"
+              className="pagination-wrapper"
               style={{
                 display: "flex",
-                gap: "10px",
-                marginTop: "20px",
+                flexDirection: "column",
                 alignItems: "center",
+                marginTop: "40px",
+                gap: "15px",
               }}
             >
-              <button
-                onClick={handlePrevPage}
-                disabled={!pagination.hasPrevPage || loading}
-                className="pag-btn"
-              >
-                <ChevronLeft size={16} />
-                Înapoi
-              </button>
-
-              <span>
-                Pagina {pagination.currentPage} din {pagination.totalPages}
-              </span>
-
-              <button
-                onClick={handleNextPage}
-                disabled={!pagination.hasNextPage || loading}
-                className="pag-btn"
-              >
-                Înainte
-                <ChevronRight size={16} />
-              </button>
+              {/* Цифровая пагинация из скриншота */}
+              {pagination.totalPages > 1 && (
+                <Pagination
+                  currentPage={currentPage}
+                  totalPages={pagination.totalPages}
+                  hasPrevPage={pagination.hasPrevPage}
+                  hasNextPage={pagination.hasNextPage}
+                  loading={loading}
+                  onPageChange={(page) => setCurrentPage(page)}
+                />
+              )}
             </div>
-          )}
+          )}{" "}
+          {/* <-- Скобки закрывают условие логического "И" (&&) */}
         </div>
       </section>
     </>
